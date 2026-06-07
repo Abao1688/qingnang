@@ -1,0 +1,66 @@
+name: 编译青囊 APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: '青囊服务器地址'
+        required: false
+        default: 'http://175.178.90.28:8801'
+      version_name:
+        description: '版本号 (如 1.1.0)'
+        required: false
+        default: '1.0.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 设置 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 设置 Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10"
+
+      - name: 解码签名密钥
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > keystore.jks
+
+      - name: 替换服务器地址
+        if: github.event.inputs.app_url != ''
+        run: |
+          sed -i "s|http://175.178.90.28:8801|${{ github.event.inputs.app_url }}|g" \
+            app/src/main/java/com/qingnang/app/MainActivity.kt
+
+      - name: 编译 APK
+        run: gradle assembleRelease
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: qingnang
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: ${{ github.event.inputs.version_name || '1.0.0' }}
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 青囊-APK-v${{ github.event.inputs.version_name || '1.0.0' }}
+          path: app/build/outputs/apk/release/*.apk
+          retention-days: 90
+
+      - name: 上传签名密钥（留底）
+        uses: actions/upload-artifact@v4
+        with:
+          name: qingnang-keystore
+          path: keystore.jks
+          retention-days: 90
